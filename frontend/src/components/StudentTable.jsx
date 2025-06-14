@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import Modal from './ui/Modal.jsx';
+import StudentProfile from './StudentProfile.jsx';
 import {
   TextField,
   IconButton,
@@ -16,6 +17,7 @@ import {
   MenuItem,
   Typography,
   Box,
+  CircularProgress,
 } from '@mui/material';
 import {
   MoreVert as MoreVertIcon,
@@ -23,7 +25,10 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Search as SearchIcon,
+  Refresh as RefreshIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
+import api from '../utils/api.js';
 
 const StudentTable = () => {
   const [users, setUsers] = useState([]);
@@ -32,6 +37,10 @@ const StudentTable = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedUserId, setSelectedUserId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [cfLoading, setCfLoading] = useState(false);
+  const [cfError, setCfError] = useState('');
+  const [viewingUser, setViewingUser] = useState(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -44,10 +53,12 @@ const StudentTable = () => {
 
   const fetchUsers = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/v1/all-users');
+      const res = await api.get('/all-users');
       setUsers(res.data);
     } catch (error) {
       console.error('Failed to fetch users:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -57,7 +68,7 @@ const StudentTable = () => {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`http://localhost:3000/api/v1/delete/${id}`);
+      await api.delete(`/delete/${id}`);
       fetchUsers();
     } catch (error) {
       console.error('Delete failed:', error);
@@ -82,17 +93,45 @@ const StudentTable = () => {
     });
   };
 
+  const fetchCodeforcesData = async (handle) => {
+    setCfLoading(true);
+    setCfError('');
+    try {
+      const res = await fetch(`https://codeforces.com/api/user.info?handles=${handle}`);
+      const data = await res.json();
+      console.log('Codeforces data:', data);
+
+      if (data.status === 'OK') {
+        const user = data.result[0];
+        setFormData((prev) => ({
+          ...prev,
+          name: user.firstName
+            ? `${user.firstName} ${user.lastName}`
+            : user.handle,
+          currentRating: user.rating || '',
+          maxRating: user.maxRating || '',
+        }));
+      } else {
+        setCfError('Invalid Codeforces handle');
+      }
+    } catch (err) {
+      setCfError('Failed to fetch Codeforces data');
+    } finally {
+      setCfLoading(false);
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: name.includes("Rating") ? Number(value) : value,
+      [name]: name.includes('Rating') ? Number(value) : value,
     }));
   };
 
   const handleUpdate = async () => {
     try {
-      await axios.put(`http://localhost:3000/api/v1/edit/${editUserId}`, formData);
+      await api.put(`/edit/${editUserId}`, formData);
       setEditUserId(null);
       fetchUsers();
     } catch (error) {
@@ -102,7 +141,7 @@ const StudentTable = () => {
 
   const handleAddUser = async () => {
     try {
-      await axios.post(`http://localhost:3000/api/v1/create`, formData);
+      await api.post(`/create`, formData);
       setIsAdding(false);
       fetchUsers();
     } catch (error) {
@@ -118,6 +157,11 @@ const StudentTable = () => {
   const handleCloseMenu = () => {
     setAnchorEl(null);
     setSelectedUserId(null);
+  };
+
+  const handleViewDetails = (user) => {
+    setViewingUser(user);
+    handleCloseMenu();
   };
 
   const filteredUsers = users.filter((user) =>
@@ -164,35 +208,58 @@ const StudentTable = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredUsers.map((user) => (
-              <TableRow key={user._id} hover>
-                <TableCell>{user.name}</TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>{user.contact}</TableCell>
-                <TableCell align="right">{user.currentRating}</TableCell>
-                <TableCell align="right">{user.maxRating}</TableCell>
-                <TableCell align="right">
-                  <IconButton onClick={(e) => handleOpenMenu(e, user._id)}>
-                    <MoreVertIcon />
-                  </IconButton>
-                  <Menu
-                    anchorEl={anchorEl}
-                    open={selectedUserId === user._id}
-                    onClose={handleCloseMenu}
-                  >
-                    <MenuItem onClick={() => handleEditClick(user)}>
-                      <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
-                    </MenuItem>
-                    <MenuItem onClick={() => handleDelete(user._id)}>
-                      <DeleteIcon fontSize="small" sx={{ mr: 1, color: 'red' }} /> Delete
-                    </MenuItem>
-                  </Menu>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={6} align="center">
+                  <CircularProgress />
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              filteredUsers.map((user) => (
+                <TableRow key={user._id} hover>
+                  <TableCell>{user.name}</TableCell>
+                  <TableCell>{user.email}</TableCell>
+                  <TableCell>{user.contact}</TableCell>
+                  <TableCell align="right">{user.currentRating}</TableCell>
+                  <TableCell align="right">{user.maxRating}</TableCell>
+                  <TableCell align="right">
+                    <IconButton onClick={(e) => handleOpenMenu(e, user._id)}>
+                      <MoreVertIcon />
+                    </IconButton>
+                    <Menu
+                      anchorEl={anchorEl}
+                      open={selectedUserId === user._id}
+                      onClose={handleCloseMenu}
+                    >
+                      <MenuItem onClick={() => handleViewDetails(user)}>
+                        <VisibilityIcon fontSize="small" sx={{ mr: 1, color: 'primary.main' }} /> View Details
+                      </MenuItem>
+                      <MenuItem onClick={() => handleEditClick(user)}>
+                        <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
+                      </MenuItem>
+                      <MenuItem onClick={() => handleDelete(user._id)}>
+                        <DeleteIcon fontSize="small" sx={{ mr: 1, color: 'red' }} /> Delete
+                      </MenuItem>
+                    </Menu>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </Paper>
+
+      {/* View Details Modal */}
+      {viewingUser && (
+        <Modal
+          title="Student Profile"
+          isOpen={!!viewingUser}
+          onClose={() => setViewingUser(null)}
+          onSubmit={() => setViewingUser(null)}
+        >
+          <StudentProfile size user={viewingUser} />
+        </Modal>
+      )}
 
       {/* Edit Modal */}
       <Modal
@@ -211,8 +278,20 @@ const StudentTable = () => {
             type={key.includes('Rating') ? 'number' : 'text'}
             fullWidth
             margin="normal"
+            InputProps={{
+              endAdornment:
+                key === 'codeforcesId' ? (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => fetchCodeforcesData(formData.codeforcesId)}>
+                      <RefreshIcon />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null,
+            }}
           />
         ))}
+        {cfLoading && <CircularProgress size={20} sx={{ mt: 2 }} />}
+        {cfError && <Typography color="error">{cfError}</Typography>}
       </Modal>
 
       {/* Add Modal */}
@@ -232,8 +311,20 @@ const StudentTable = () => {
             type={key.includes('Rating') ? 'number' : 'text'}
             fullWidth
             margin="normal"
+            InputProps={{
+              endAdornment:
+                key === 'codeforcesId' ? (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => fetchCodeforcesData(formData.codeforcesId)}>
+                      <RefreshIcon />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null,
+            }}
           />
         ))}
+        {cfLoading && <CircularProgress size={20} sx={{ mt: 2 }} />}
+        {cfError && <Typography color="error">{cfError}</Typography>}
       </Modal>
     </Box>
   );

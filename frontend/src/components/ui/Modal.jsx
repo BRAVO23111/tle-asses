@@ -10,7 +10,7 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 
-const Modal = ({ title, isOpen, onClose, onSubmit, children }) => {
+const Modal = ({ title, isOpen, onClose, onSubmit, children, viewOnly = false }) => {
   return (
     <Dialog open={isOpen} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle sx={{ m: 0, p: 2 }}>
@@ -32,12 +32,20 @@ const Modal = ({ title, isOpen, onClose, onSubmit, children }) => {
       <DialogContent dividers>{children}</DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} color="inherit" variant="outlined">
-          Cancel
-        </Button>
-        <Button onClick={onSubmit} color="primary" variant="contained">
-          Save
-        </Button>
+        {viewOnly ? (
+          <Button onClick={onClose} color="primary" variant="contained">
+            Close
+          </Button>
+        ) : (
+          <>
+            <Button onClick={onClose} color="inherit" variant="outlined">
+              Cancel
+            </Button>
+            <Button onClick={onSubmit} color="primary" variant="contained">
+              Save
+            </Button>
+          </>
+        )}
       </DialogActions>
     </Dialog>
   );
